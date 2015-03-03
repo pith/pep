@@ -1,12 +1,12 @@
 
-- PEP: 004  
-- Title: Automatic UI generation (codenamed Kaviar)  
+- PEP: 004
+- Title: Automatic UI generation (codenamed Kaviar)
 - Authors: 
  - Adrien LAUER <adrien.lauer@mpsa.com>
  - Kavi RAMYEAD <kavi.ramyead@ext.mpsa.com>
  - Pierre THIROUIN <pierre.thirouin@ext.mpsa.com>
- - Redouane LOULOU <redouane.loulou@ext.mpsa.com>  
-- Status: draft  
+ - Redouane LOULOU <redouane.loulou@ext.mpsa.com>
+- Status: draft
 
 # Abstract
 
@@ -24,19 +24,23 @@ We want the business framework to be a complete productivity framework based on 
 # Specification
 
 
-## Automatic Assembler
+## Assemblers
 
 This part is located in business framework core.
 
-The first step leading to automatic UI will be to provide automatic assemblers. So users won't have to write them, even if it will be still configurable.
+The first step leading to automatic UI will be to provide automatic
+assemblers. So users won't have to write them, even if it will be still configurable.
 
-In order to do this, we will create a specific assembler extending `AbstractBaseAssembler`. It will use the DSL provided by [ModelMapper](http://modelmapper.org/).
+In order to do this, we will create a specific assembler extending
+`AbstractBaseAssembler`. It will use the DSL provided by [ModelMapper](http://modelmapper.org/).
 
-This draft needs some complements on:
+**TODO** this draft needs some complements on:
 
 * POC with maps and lists
 * POC with tuples
 * Data security
+
+### Automatic finders
 
 ```java
 public class AutomaticAssembler<AGGREGATE_ROOT extends AggregateRoot<?>, DTO extends Object> extends AbstractBaseAssembler<AGGREGATE_ROOT, DTO>{
@@ -44,7 +48,16 @@ public class AutomaticAssembler<AGGREGATE_ROOT extends AggregateRoot<?>, DTO ext
 }
 ```
 
-`AutomaticAssembler` will keep the compatibility with the current assemblers by specializing them for automatic mapping. The do...() methods will already be implemented in those automatic assemblers with the ability for end users to override a configure() method if special configuration is needed. An explicitly written assembler class will not be needed if the developer want to keep the default behavior (much like the default factories or repositories). In that case, an annotation must be applied on the DTO class for the framework to recognize the association to the aggregate. **This part will supplement the currently existing assemblers.**
+`AutomaticAssembler` will keep the compatibility with the current
+assemblers by specializing them for automatic mapping. The do...()
+methods will already be implemented in those automatic assemblers with
+the ability for end users to override a configure() method if special
+configuration is needed. An explicitly written assembler class will
+not be needed if the developer want to keep the default behavior (much
+like the default factories or repositories). In that case, an
+annotation must be applied on the DTO class for the framework to
+recognize the association to the aggregate. **This part will
+supplement the currently existing assemblers.**
 
 ```java
 public MyAssembler extends AutomaticAssembler<MyAggregateRoot, MyDTO> {
@@ -61,34 +74,154 @@ public MyAssembler extends AutomaticAssembler<MyAggregateRoot, MyDTO> {
 }
 ```
 
-Note that map(), skip() and other methods should detect from which method it is called to provide the right target.
+Note that map(), skip() and other methods should detect from which
+method it is called to provide the right target.
 
-On top of that an API and/or a DSL would be provided for the developer to specify the whole assembling behavior, including loading from a repo, creating from a factory and so on... **This part would completely replace the current Assemblers facade, which should be deprecated and reimplemented with this DSL**.
+### Assembler DSL
+
+On top of that an API and/or a DSL would be provided for the developer
+to specify the whole assembling behavior, including loading from a
+repo, creating from a factory and so on... **This part would
+completely replace the  current Assemblers facade, which should be
+deprecated and reimplemented with this DSL**.
+
+**Dto to aggregate**
+```java
+import static org.seedstack.business.api.interfaces.Interfaces.assemble;
+...
+
+OrderDto orderDto = new OrderDto();
+Order myOrder = new Order();
+Customer customer = new Customer();
+List<Object> dtos = Lists.newArrayList(orderDto, myOrder);
+List<Order> orders = Lists.newArrayList(myOrder, myOrder);
+
+Order order = assemble().dto(orderDto).to(myOrder);
+
+order = Interfaces.assemble().dto(orderDto).to(Order.class).fromFactory(); // from factory
+
+order = assemble().dtos(dtos).to(Tuple.tuple(Order.class, Customer.class)).fromFactory(); // list of dto to tuple of aggregates
+
+order = assemble().dtos(dtos).to(orders); // list of dtos to list of aggregates
+
+order = assemble().dto(orderDto).to(Order.class).fromRepository().thenFromFactory(); // from repo or fact
+try {
+    order = assemble().dto(orderDto).to(Order.class).fromRepository().orFail(); // from repo or fail
+} catch (AggregateNotFoundException e) {
+    e.printStackTrace();
+}
+```
+
+**With qualifier**
 
 ```java
-Assemble.dto(customerDto).to(customer);
+order = assemble().dto(orderDto).to(Order.class)
+    .fromRepositories(Names.named("jpa"), Names.named("jdbc"))
+    .thenFromFactories(Names.named("fact1"), Names.named("fact2"));
+```
 
-Assemble.dto(customerDto).to(Customer.class).fromRepositories("qualifier1", "qualifier2").thenFromFactories("qualifier3", "qualifier4");
+**Aggregate to dto**
 
-Assemble.dto(customerDto).to(Customer.class).fromRepository().thenFromFactory();
+```java
+OrderDto orderDto1 = assemble().aggregate(myOrder).to(OrderDto.class);
 
-Assemble.dto(customerDto).to(Customer.class).fromRepository().withAssembler(new AbstractMapping() {
-        public void configureMerge(MyDTO source) {
-            skip(source.name);
-        }
-});
+orderDto1 = assemble().aggregate(myOrder).toDynamicDto();
 
-Assemble.aggregate(customer).to(CustomerDTO.class).withMapping(new AbstractMapping() {
-        public void configureAssembly(MyAggregate source) {
-            skip(source.name);
-        }
-});
+orderDto1 = assemble().aggregates(Lists.newArrayList(myOrder1, myOrder2)).toDynamicDto();
+```
 
-Assemble.aggregate(customer).toDynamicDto();
+**Tuple of aggregate to dto**
 
-Assemble.dto(dynamicDto).to(Customer.class);
-```    
+```java
+orderDto1 = assemble().tuple(Tuple.tuple(Order.class, Customer.class)).to(OrderDto.class);
 
+orderDto1 = assemble().tuples(
+        Lists.newArrayList(Tuple.tuple(order, customer), Tuple.tuple(order, customer))
+).to(OrderDto.class);
+```
+
+### Matching DTO parameters to factory's methods
+
+In order to implement the methods `fromRepository()` and
+`fromFactory()` we need:
+1. load an aggregate from a repository based its id 
+2. Create an aggregate with a factory based on the dto
+
+For the first case, we need to find/construct the aggregate id from the dto.
+For the second case, we need to map dto getter methods to the factory
+method parameters.
+
+What we have now.
+
+```java
+public class ProductDto {
+    private Short storeId;
+    private Short productCode;
+    private String name;
+    private Integer price;
+
+    @MatchingFactoryParameter(index=0)
+    public String getName() {
+        return name;
+    }
+
+    @MatchingAggregateId (index=0)
+    @MatchingFactoryParameter(index=1)
+    public Short getStoreId() {
+        return storeId;
+    }
+
+    @MatchingAggregateId (index=1)
+    @MatchingFactoryParameter(index=2)
+    public Short getProductCode() {
+        return productCode;
+    }
+}
+```
+
+```java
+@Embeddable
+public class ProductId extends BaseValueObject {
+    private Short storeId;
+    private Short productCode;
+
+    ProductId() {
+    }
+
+    public ProductId(Short storeId, Short productCode) {
+        this.storeId = storeId;
+        this.productCode = productCode;
+    }
+}
+```
+
+```java
+public interface ProductFactory extends GenericFactory<Product> {
+    Product createProduct (String name, Short storeId, Short productCode);
+}
+```
+
+We may reduce the annotation `@MatchingAggregateId` to `@MatchId`
+and `@MatchingFactoryParameter` to `@MatchParam`. And replace index by
+value. This will improve the lisibility.
+
+Also we plan to add different matching algorithms. Projects using Java
+7 will benefit from a matching based on the method parameters's name.
+People using `AutomaticAssembler`s will able to specify the matching
+by themselves with modelmapper.
+
+These different matching will be grouped under an SPI composed of one
+interface:
+
+```java
+interface DtoInfo {
+
+    Object resolveId(Object dto);
+
+    Object resolveAggregate(Object dto);
+
+}
+```
 ## Finder improvements
 
 This part is located in business framework core.
