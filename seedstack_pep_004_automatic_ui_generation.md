@@ -40,7 +40,7 @@ In order to do this, we will create a specific assembler extending
 * POC with tuples
 * Data security
 
-### Automatic finders
+### Automatic assembler
 
 ```java
 public class AutomaticAssembler<AGGREGATE_ROOT extends AggregateRoot<?>, DTO extends Object> extends AbstractBaseAssembler<AGGREGATE_ROOT, DTO>{
@@ -79,13 +79,20 @@ method it is called to provide the right target.
 
 ### Assembler DSL
 
-On top of that an API and/or a DSL would be provided for the developer
-to specify the whole assembling behavior, including loading from a
-repo, creating from a factory and so on... **This part would
-completely replace the  current Assemblers facade, which should be
-deprecated and reimplemented with this DSL**.
+On top of that a DSL will be provided to developers to specify
+the whole assembling behavior, including loading from a
+repo, creating from a factory and so on... **This part will
+completely replace the current Assemblers facade, which should be
+deprecated**.
+
+** Sequence diagrams **
+
+![Sequence diagram dto to aggregate root](./seedstack_pep_004_automatic_ui_generation/dslToAgg.png)
+
+![Sequence diagram aggregate root to dto](./seedstack_pep_004_automatic_ui_generation/dslToDto.png)
 
 **Dto to aggregate**
+
 ```java
 import static org.seedstack.business.api.interfaces.Interfaces.assemble;
 ...
