@@ -81,39 +81,45 @@ method it is called to provide the right target.
 
 On top of that a DSL will be provided to developers to specify
 the whole assembling behavior, including loading from a
-repo, creating from a factory and so on... **This part will
-completely replace the current Assemblers facade, which should be
-deprecated**.
+repo, creating from a factory and so on...
 
-** Sequence diagrams **
-
-![Sequence diagram dto to aggregate root](./seedstack_pep_004_automatic_ui_generation/dslToAgg.png)
-
-![Sequence diagram aggregate root to dto](./seedstack_pep_004_automatic_ui_generation/dslToDto.png)
+> This part will completely replace the current Assemblers facade, 
+> which should be deprecated.
 
 **Dto to aggregate**
+
+![Sequence diagram dto to aggregate root](./seedstack_pep_004_automatic_ui_generation/dslToAgg.png)
 
 ```java
 import static org.seedstack.business.api.interfaces.Interfaces.assemble;
 ...
 
+/* Setup */
 OrderDto orderDto = new OrderDto();
 Order myOrder = new Order();
 Customer customer = new Customer();
 List<Object> dtos = Lists.newArrayList(orderDto, myOrder);
 List<Order> orders = Lists.newArrayList(myOrder, myOrder);
 
-Order order = assemble().dto(orderDto).to(myOrder);
+/* Usage */
+Order order1 = assemble().dto(orderDto).to(myOrder);
 
-order = Interfaces.assemble().dto(orderDto).to(Order.class).fromFactory(); // from factory
+// from factory
+Order order2 = Interfaces.assemble().dto(orderDto).to(Order.class).fromFactory();
 
-order = assemble().dtos(dtos).to(Tuple.tuple(Order.class, Customer.class)).fromFactory(); // list of dto to tuple of aggregates
+// list of dto to tuple of aggregates
+Pair<Order, Customer> order3 = assemble().dtos(dtos).to(Tuple.tuple(Order.class, Customer.class)).fromFactory(); 
 
-order = assemble().dtos(dtos).to(orders); // list of dtos to list of aggregates
+// list of dtos to list of aggregates
+List<Order> orders2 = assemble().dtos(dtos).to(orders);
 
-order = assemble().dto(orderDto).to(Order.class).fromRepository().thenFromFactory(); // from repo or fact
+// from repo or fact
+Order order4 = assemble().dto(orderDto).to(Order.class).fromRepository().thenFromFactory();
+
+// from repo or fail
+Order order5;
 try {
-    order = assemble().dto(orderDto).to(Order.class).fromRepository().orFail(); // from repo or fail
+    order5 = assemble().dto(orderDto).to(Order.class).fromRepository().orFail();
 } catch (AggregateNotFoundException e) {
     e.printStackTrace();
 }
@@ -123,27 +129,24 @@ try {
 
 ```java
 order = assemble().dto(orderDto).to(Order.class)
-    .fromRepositories(Names.named("jpa"), Names.named("jdbc"))
-    .thenFromFactories(Names.named("fact1"), Names.named("fact2"));
+    .fromRepositories(Names.named("jpa")).thenFromFactories(Names.named("fact1"));
 ```
 
 **Aggregate to dto**
 
+![Sequence diagram aggregate root to dto](./seedstack_pep_004_automatic_ui_generation/dslToDto.png)
+
 ```java
 OrderDto orderDto1 = assemble().aggregate(myOrder).to(OrderDto.class);
-
-orderDto1 = assemble().aggregate(myOrder).toDynamicDto();
-
-orderDto1 = assemble().aggregates(Lists.newArrayList(myOrder1, myOrder2)).toDynamicDto();
 ```
 
-**Tuple of aggregate to dto**
+with tuple:
 
 ```java
-orderDto1 = assemble().tuple(Tuple.tuple(Order.class, Customer.class)).to(OrderDto.class);
+orderDto1 = assemble().tuple(Tuples.create(Order.class, Customer.class)).to(OrderDto.class);
 
 orderDto1 = assemble().tuples(
-        Lists.newArrayList(Tuple.tuple(order, customer), Tuple.tuple(order, customer))
+        Lists.newArrayList(Tuples.create(order, customer), Tuples.create(order, customer))
 ).to(OrderDto.class);
 ```
 
@@ -208,27 +211,26 @@ public interface ProductFactory extends GenericFactory<Product> {
 }
 ```
 
-We may reduce the annotation `@MatchingAggregateId` to `@MatchId`
-and `@MatchingFactoryParameter` to `@MatchParam`. And replace index by
-value. This will improve the lisibility.
+We may reduce the annotation `@MatchingAggregateId` to `@MatchId` and
+`@MatchingFactoryParameter` to `@MatchParam` in order to improve the
+lisibility.
 
-Also we plan to add different matching algorithms. Projects using Java
-7 will benefit from a matching based on the method parameters's name.
-People using `AutomaticAssembler`s will able to specify the matching
-by themselves with modelmapper.
-
-These different matching will be grouped under an SPI composed of one
-interface:
+This algorithm will be extract into the following interface. It will
+convert the information on the dto into a object representing the
+method parameters. This object will then be used to call the factory
+method or the object constructor. The matching will be done via the
+`MethodMatcher` utility class.
 
 ```java
-interface DtoInfo {
+public interface DtoInfoResolver {
 
-    Object resolveId(Object dto);
+    ParameterHolder resolveId(Object dto);
 
-    Object resolveAggregate(Object dto);
+    ParameterHolder resolveAggregate(Object dto);
 
 }
 ```
+
 ## Finder improvements
 
 This part is located in business framework core.
